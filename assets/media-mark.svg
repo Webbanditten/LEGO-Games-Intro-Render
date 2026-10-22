@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" width="640" height="480">
+  <!-- LEGO Media end card (right half): yellow brick mark + "media." wordmark.
+       Coordinates match the final frame (f_237) of intro.mp4, 640x480.
+       The whole group (#media-group) zooms in from scale 0 about the frame centre (320,240). -->
+  <g id="media-group">
+    <!-- front face of the brick: flat LEGO yellow, M / lightning-shaped cut; outer acute corners rounded -->
+    <path id="brick-face" fill="#FFD400"
+      d="M291.9,207.4 A7,7 0 0 1 302.7,201.5 L471.6,310.6 L471.6,403.4 A5.5,5.5 0 0 1 462.7,407.8
+         L415.9,371.2 L415.9,314.7 L368.1,332.4 L322.6,247.3 L326.9,293.6 A3,3 0 0 1 322.1,296.2
+         L291.9,272.0 Z"/>
+    <!-- 8 studs (2 rows x 4) as flat ellipses on black; back row first -->
+    <g id="studs" fill="#FFD400">
+      <ellipse cx="388.5" cy="161.0" rx="19.7" ry="6.0"  transform="rotate(-1.5 388.5 161.0)"/>
+      <ellipse cx="433.9" cy="183.2" rx="20.1" ry="8.1"  transform="rotate(-0.7 433.9 183.2)"/>
+      <ellipse cx="486.1" cy="208.8" rx="22.7" ry="9.2"  transform="rotate(1.9 486.1 208.8)"/>
+      <ellipse cx="547.2" cy="238.5" rx="25.2" ry="10.3" transform="rotate(2.3 547.2 238.5)"/>
+      <ellipse cx="331.0" cy="175.2" rx="19.4" ry="7.5"  transform="rotate(-3.7 331.0 175.2)"/>
+      <ellipse cx="373.5" cy="199.4" rx="22.6" ry="8.0"  transform="rotate(-2.7 373.5 199.4)"/>
+      <ellipse cx="423.8" cy="228.1" rx="24.2" ry="10.1" transform="rotate(-1.2 423.8 228.1)"/>
+      <ellipse cx="483.0" cy="261.8" rx="26.9" ry="11.8" transform="rotate(1.0 483.0 261.8)"/>
+    </g>
+    <!-- wordmark: lowercase humanist sans (Tahoma is a close match), 64px, wide tracking (~8.7px) -->
+    <text id="media-text" y="120.2" fill="#FAFAFA"
+      font-family="Tahoma, Verdana, 'DejaVu Sans', sans-serif" font-size="64" font-weight="400" stroke="#FAFAFA" stroke-width="1.2" stroke-linejoin="round"><tspan x="291.5">m</tspan><tspan x="353.6">e</tspan><tspan x="396.0">d</tspan><tspan x="439.7">i</tspan><tspan x="463.8">a</tspan></text>
+    <!-- red full stop: small square -->
+    <rect id="period" x="511.5" y="110.3" width="8" height="8" fill="#D70129"/>
+  </g>
+</svg>
