@@ -53,7 +53,7 @@ Everything was measured from `intro.mp4` first, then matched:
 
 - **Timing:**
   - The first brick appears at 0.33 s.
-  - The swarm thickens until about 5 s, and the camera dollies back from 6.5 s.
+  - The swarm thickens until about 5 s, and the camera dollies back from about 6.5 s, eased in from rest so the convergence never starts with a jolt.
   - The mosaic is complete at 11.0 s, with a few bricks at the blast centre settling until 11.27 s.
   - The stud mosaic dissolves into the flat logo over 11.2 to 12.1 s.
   - The logo moves left over 13.03 to 13.47 s, linearly.
@@ -63,7 +63,8 @@ Everything was measured from `intro.mp4` first, then matched:
   - Visible brick counts track the original through the opening.
   - So do the colour shares, red/white/yellow area per frame, entry edges and fall speeds.
   - So does how settled the logo looks between 9.3 and 11 s.
-  - The fly-bys and the bursts of white/black bricks follow the original frame by frame. The last three white bricks glide into the letters along tracks measured from the video.
+  - The fall speed was matched with optical flow, frame third by frame third. The bricks rain through the full height of the frame and out at the bottom. They only turn back toward the logo once the camera pulls back.
+  - The fly-bys and the late bursts of grey, white and red bricks follow the original frame by frame, including which face they show: several turn the LEGO stud toward the camera. The last three white bricks glide into the letters along tracks measured from the video.
   - `node tools/stats.mjs`, `tools/area_stats.py` and `tools/settle_curve.py` print the comparisons.
 - **The mosaic:**
   - It is 60 x 60 bricks with a black 1-brick border ring, sampled from `LEGO_logo.svg`.
