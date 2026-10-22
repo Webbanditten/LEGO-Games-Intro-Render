@@ -1,9 +1,16 @@
 # LEGO Media intro, recreated in three.js
 
+**[▶ Watch it live in your browser](https://webbanditten.github.io/LEGO-Games-Intro-Render/)** · rendered videos: [1080p60](https://github.com/Webbanditten/LEGO-Games-Intro-Render/releases/download/v2.0/lego-intro-1080p.mp4) · [4K60](https://github.com/Webbanditten/LEGO-Games-Intro-Render/releases/download/v2.0/lego-intro-4k.mp4)
+
+[![The recreated intro, rendered in real time](docs/preview.webp)](https://webbanditten.github.io/LEGO-Games-Intro-Render/)
+
 A frame-accurate, real-time recreation of the classic **LEGO Media** intro
 (`intro.mp4`): thousands of 1x1 bricks rain out of the dark, swarm past the
 camera and lock into a 60x60 brick mosaic of the LEGO logo, which dissolves
 into the flat logo before the "LEGO Media" mark slams in.
+
+![Original (top) and recreation (bottom) at 3.0, 6.0, 8.0, 10.0, 11.1 and 15.7 s](docs/comparison.jpg)
+<sub>Top row: the original `intro.mp4`. Bottom row: this recreation at the same moments.</sub>
 
 As suspected, the original is a **reversed explosion**, and this recreation is
 built the same way. Each of the 3600 logo bricks follows a blast path in
