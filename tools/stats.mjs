@@ -79,3 +79,21 @@ if (process.argv.includes('--tracks')) {
     console.log(`hero ${ch.color[id]} t=${t0.toFixed(2)}: ${pts.join(' ')}`);
   }
 }
+
+// Regression guard: no brick may pass through the camera inside the view (that shows
+// as a full-frame flash of one colour), sampled at 120 Hz over the whole intro.
+{
+  const { cameraAt, TAN_H, TAN_V } = await import('../src/choreography.js');
+  const flagged = new Map();
+  for (let k = 0; k <= 11 * 120; k++) {
+    const t = k / 120, cam = cameraAt(t), c = Math.cos(cam.roll), s = Math.sin(cam.roll);
+    for (let id = 0; id < ch.n; id++) {
+      evalBrick(ch, id, t, pos, quat);
+      const d = cam.z - pos[2];
+      if (d <= -0.8 || d >= 0.9) continue;
+      const x = pos[0] * c - pos[1] * s, y = pos[0] * s + pos[1] * c, dd = Math.max(d, 0.1);
+      if (Math.abs(x) < TAN_H * dd + 0.8 && Math.abs(y) < TAN_V * dd + 0.8 && !flagged.has(id)) flagged.set(id, t.toFixed(3));
+    }
+  }
+  console.log(flagged.size ? `!! bricks crossing the camera in view: ${[...flagged].map(([id, t]) => `${id}@${t}s`).join(', ')}` : 'near-plane guard: ok');
+}

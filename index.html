@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 rx=%222%22 fill=%22%23d70129%22/%3E%3Ccircle cx=%228%22 cy=%228%22 r=%224%22 fill=%22%23e8203f%22/%3E%3C/svg%3E">
   <title>LEGO Media Intro, Recreated</title>
   <style>
     html, body { margin: 0; height: 100%; background: #000; color: #ddd; overflow: hidden;
@@ -14,10 +15,13 @@
       font-weight: 600; font-size: 18px; font-family: inherit; color: #fff; background: #d70129; border: 0; border-radius: 6px; cursor: pointer;
       box-shadow: 0 0 0 3px #000, 0 0 0 5px #fbc832; }
     #play:hover { filter: brightness(1.1); }
+    #play:disabled { opacity: .55; cursor: progress; filter: none; }
     #ui { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 8px; align-items: center;
       justify-content: center; padding: 12px; transition: opacity .4s; }
     #ui.playing { opacity: 0; }
     #ui:hover { opacity: 1; }
+    /* touch: the faded-out bar must not catch taps, so a tap reaches the stage and pauses */
+    @media (hover: none) { #ui.playing { pointer-events: none; } }
     #ui button { background: #222; color: #ddd; border: 1px solid #444; border-radius: 4px; padding: 6px 10px; cursor: pointer; font: inherit; }
     #ui button:hover { background: #333; }
     #status { position: fixed; left: 12px; top: 10px; color: #888; font-variant-numeric: tabular-nums; }
@@ -29,13 +33,29 @@
 </head>
 <body>
   <div id="stage"><canvas id="c"></canvas></div>
-  <button id="play">▶ Play</button>
+  <button id="play" disabled>Loading…</button>
   <div id="status"></div>
-  <div id="ui">
+  <div id="ui" hidden>
     <button id="replay" title="Restart (R)">↻ Replay</button>
     <button id="sound" title="Toggle soundtrack (M)">Sound: original</button>
     <input id="scrub" type="range" min="0" max="15.8" step="0.0167" value="0" hidden>
   </div>
+  <script>
+    // Errors before the app is up (file://, a script that fails to load, an uncaught error)
+    // become a message instead of a dead page; main.js reports init() failures (no WebGL,
+    // a missing asset) through __fail too.
+    window.__fail = function (msg) {
+      document.getElementById('status').textContent = msg;
+      document.getElementById('play').hidden = true;
+      document.getElementById('ui').hidden = true;
+    };
+    if (location.protocol === 'file:') __fail('This page must be served over http: run "npm start" and open http://localhost:8080/');
+    addEventListener('error', function (e) {
+      if (window.__ready || location.protocol === 'file:') return;
+      var src = e.target && e.target.src;
+      __fail(src ? 'Failed to load ' + src.split('/').pop() + '. Serve this folder over http (npm start).' : 'Failed to start: ' + e.message);
+    }, true);   // the capture phase also sees <script> load errors
+  </script>
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>

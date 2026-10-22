@@ -3,7 +3,7 @@
 #   tools/compare.sh <render-dir> <out.png> <frame> [frame...]   (frames are 1-based, f_NNN)
 set -e
 dir=$1; out=$2; shift 2
-orig=${ORIG_FRAMES:-/private/tmp/claude-501/-Users-patrick-Documents-github-lego-logo-intro-recreated/5df32f2b-b614-415f-8cda-32385247ade0/scratchpad/frames}
+orig=${ORIG_FRAMES:-$(cd "$(dirname "$0")/.." && pwd)/renders/original}   # tools/extract-original.sh
 tmp=$(mktemp -d)
 i=0
 for f in "$@"; do

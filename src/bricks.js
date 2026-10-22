@@ -15,7 +15,7 @@ const W = 0.975, HW = W / 2, BH = 0.6, WALL = 0.15, TOP = 0.125, STUD_R = 0.3, S
 // soft gradient: each mosaic cell reads bright in the middle with dark seams) and the
 // stud cap is domed (it catches a highlight). The tilt field is affine, so two
 // triangles per face reproduce it exactly.
-export function proceduralBrick({ seg = 32, pillow = 0.35, dome = 0.6 } = {}) {
+export function proceduralBrick({ seg = 32, pillow = 0.3, dome = 0.275 } = {}) {
   const groups = [[], [], []]; // 0 body+stud side, 1 stud cap (normal-mapped text), 2 cavity
   const v3 = (x, y, z) => new THREE.Vector3(x, y, z);
   const push = (g, p, n, uv = [0, 0]) => groups[g].push(p.x, p.y, p.z, n.x, n.y, n.z, uv[0], uv[1]);
@@ -74,21 +74,56 @@ export function proceduralBrick({ seg = 32, pillow = 0.35, dome = 0.6 } = {}) {
 }
 
 // The supplied model ("LEGO 1X1 BRICK (correct dimentions).stl", Tinkercad, mm, Z up).
-export async function stlBrick(url = './LEGO%201X1%20BRICK%20(correct%20dimentions).stl') {
+// Its flat face normals get the same pillow / dome tilt as the procedural brick, so the
+// calibrated lighting fits it too. (It has the "LEGO" text as geometry: no normal-mapped cap.)
+export async function stlBrick(url = './LEGO%201X1%20BRICK%20(correct%20dimentions).stl', { pillow = 0.3, dome = 0.275 } = {}) {
   const g = await new STLLoader().loadAsync(url);
   g.translate(-4, 33, -5.9);              // body centre (4, -33, 5.9) -> origin
   g.scale(W / 8, W / 8, 1 / 8);           // 8 mm pitch -> 1 unit, with real-LEGO play between bricks
+  // non-indexed with per-face normals, so every vertex normal can be tilted on its own
+  const P = g.attributes.position, Nm = g.attributes.normal, e = 1e-3;
+  // The stud wall: the vertical triangles that rise from the body top (the text's walls start
+  // on the stud top). Like the procedural stud it gets smooth radial normals, about the
+  // stud's own centre (0.1 mm off the body centre in this model), tilted up along its rim.
+  const wall = new Uint8Array(P.count / 3);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (let t = 0, i = 0; t < wall.length; t++, i += 3) {
+    const zs = [P.getZ(i), P.getZ(i + 1), P.getZ(i + 2)];
+    if (Math.abs(Nm.getZ(i)) >= 0.01 || Math.min(...zs) > BH + e || Math.max(...zs) < BH + 0.1) continue;
+    wall[t] = 1;
+    for (let k = i; k < i + 3; k++) {
+      x0 = Math.min(x0, P.getX(k)); x1 = Math.max(x1, P.getX(k));
+      y0 = Math.min(y0, P.getY(k)); y1 = Math.max(y1, P.getY(k));
+    }
+  }
+  const scx = (x0 + x1) / 2, scy = (y0 + y1) / 2;
+  for (let i = 0; i < P.count; i++) {
+    const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
+    let nx = Nm.getX(i), ny = Nm.getY(i), nz = Nm.getZ(i);
+    if (wall[(i / 3) | 0]) {                                                                       // stud wall: smooth, domed rim
+      const r = Math.hypot(x - scx, y - scy);
+      nx = (x - scx) / r; ny = (y - scy) / r; nz = z > BH + 0.1 ? dome * 0.8 : 0;
+    } else if (nz > 0.99 && z > BH + e) { nx += (dome * x) / STUD_R; ny += (dome * y) / STUD_R; } // stud top + embossed text: dome
+    else if (nz > 0.99 && z > BH - e) { nx += (pillow * x) / HW; ny += (pillow * y) / HW; }       // body top: pillow
+    else if (Math.abs(nz) < 0.01 && Math.max(Math.abs(x), Math.abs(y)) > HW - e && z < BH + e) { // outer sides: pillow
+      if (Math.abs(nx) > 0.99) ny += (pillow * y) / HW; else nx += (pillow * x) / HW;
+      nz += (pillow * z) / BH;
+    }
+    const l = Math.hypot(nx, ny, nz);
+    Nm.setXYZ(i, nx / l, ny / l, nz / l);
+  }
   g.clearGroups();
   g.addGroup(0, g.attributes.position.count, 0);
   g.computeBoundingSphere();
   return g;
 }
 
-export function createBricks(choreo, geometry, studNormal, { spec = 0.16, shin = 36, nmap = 0.5 } = {}) {
+// spec / shin are only the initial Phong values: lighting.js sets them every frame.
+export function createBricks(choreo, geometry, studNormal, { spec = 0.08, shin = 126, nmap = 3 } = {}) {
   const common = { specular: new THREE.Color(spec, spec, spec), shininess: shin };
   const body = new THREE.MeshPhongMaterial({ ...common });
   const cap = new THREE.MeshPhongMaterial({ ...common, normalMap: studNormal, normalScale: new THREE.Vector2(nmap, nmap) });
-  const cavity = new THREE.MeshPhongMaterial({ color: new THREE.Color(0.18, 0.18, 0.18), specular: 0x000000, shininess: 4 });
+  const cavity = new THREE.MeshPhongMaterial({ color: new THREE.Color(0.04, 0.04, 0.04), specular: 0x000000, shininess: 4 });
   const mesh = new THREE.InstancedMesh(geometry, [body, cap, cavity], choreo.n);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   mesh.frustumCulled = false;

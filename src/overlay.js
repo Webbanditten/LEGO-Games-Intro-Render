@@ -11,7 +11,8 @@ const FRAME_W = 640, FRAME_H = 480;
 const LOGO_HOLD = { x: 312.4, y: 237.2, size: 330.4 };
 const LOGO_END = { x: 159.8, y: 176.5, size: 330.4 * (184.4 / 321.5) };
 // "LEGO Media" group scale, measured frame by frame (linear grow, 1.8 % overshoot).
-const mediaScale = makeCurve([[T.mediaStart, 0], [13.80, 0.92], [13.845, 1.018], [13.92, 1.0]]);
+const MEDIA_END = 13.92;   // the mark has settled at full size
+const mediaScale = makeCurve([[T.mediaStart, 0], [13.80, 0.92], [13.845, 1.018], [MEDIA_END, 1.0]]);
 const SHUTTER = 0.02;   // ~half a 25 fps source frame of motion blur, as in the original
 const SUBFRAMES = 8;
 
@@ -19,9 +20,11 @@ export async function createOverlay(flatTexture, mediaUrl = './assets/media-mark
   const scene = new THREE.Scene();
   const camera = new THREE.OrthographicCamera(-FRAME_W / 2, FRAME_W / 2, FRAME_H / 2, -FRAME_H / 2, -10, 10);
 
-  const mediaSvg = await (await fetch(mediaUrl)).text();
+  const res = await fetch(mediaUrl);
+  if (!res.ok) throw new Error(`${mediaUrl}: HTTP ${res.status}`);
+  const mediaSvg = await res.text();
   const SCALE = 6;   // 3840x2880: stays crisp up to a 2160p canvas
-  const img = await svgImage(mediaSvg.replace(/ width="640" height="480"/, ''), FRAME_W * SCALE, FRAME_H * SCALE);
+  const img = await svgImage(mediaSvg, FRAME_W * SCALE, FRAME_H * SCALE);
   const c = document.createElement('canvas');
   c.width = FRAME_W * SCALE; c.height = FRAME_H * SCALE;
   c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
@@ -71,7 +74,7 @@ export async function createOverlay(flatTexture, mediaUrl = './assets/media-mark
       place(mesh, L.x, L.y, L.size, L.size);
     });
     const s = mediaScale(t);
-    const growing = t > T.mediaStart && t < 13.93;
+    const growing = t > T.mediaStart && t < MEDIA_END + SHUTTER / 2;
     setLayer(medias, s > 0.002 ? 1 : 0, growing, (mesh, o) => {
       const si = Math.max(0, mediaScale(t + o * SHUTTER));
       place(mesh, FRAME_W / 2, FRAME_H / 2, FRAME_W * si, FRAME_H * si);

@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { createServer } from './serve.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const ORIG = process.env.ORIG_FRAME || '/private/tmp/claude-501/-Users-patrick-Documents-github-lego-logo-intro-recreated/5df32f2b-b614-415f-8cda-32385247ade0/scratchpad/frames/f_167.png';
+// the original's assembled mosaic (tools/extract-original.sh)
+const ORIG = process.env.ORIG_FRAME || path.join(root, 'renders/original/f_167.png');
 const iters = Number(process.argv[process.argv.indexOf('--iters') + 1]) || 3;
 const grid = fs.readFileSync(path.join(root, 'assets/mosaic-60.txt'), 'utf8').trim().split('\n');
 
@@ -41,6 +42,16 @@ const measureSrc = `(data, grid) => {
   }
   const rows = (j0, j1) => { const a = []; for (let j = j0; j < j1; j++) for (let i = 5; i < 55; i++) a.push(px(Math.round(152.3 + 5.4 * i), Math.round(78.6 + 5.39 * j))); return med(a); };
   out.top = rows(1, 8); out.bottom = rows(50, 58);
+  // stripe orientation in the top red field: horizontal vs vertical luminance change
+  // (the original's stud highlights line up in horizontal rows: V/H ~ 0.5)
+  let gx = 0, gy = 0, field = [0, 0, 0], nf = 0;
+  const L = (x, y) => { const p = px(x, y); return 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]; };
+  for (let y = 89; y < 154; y++) for (let x = 179; x < 449; x++) {
+    gx += Math.abs(L(x + 1, y) - L(x, y)); gy += Math.abs(L(x, y + 1) - L(x, y));
+    const p = px(x, y); field = field.map((v, c) => v + p[c]); nf++;
+  }
+  out.vh = gx / gy;
+  out.field = field.map((v) => v / nf);   // whole-area average: seams included
   return out;
 }`;
 
@@ -76,12 +87,20 @@ function loss(m) {
   const d = (a, b, w) => { for (let c = 0; c < 3; c++) e += w * (Math.sqrt(a[c]) - Math.sqrt(b[c])) ** 2; };
   for (const k of 'RWYK') if (m[k] && target[k]) { d(m[k].mean, target[k].mean, W[k] * 2); d(m[k].stud, target[k].stud, W[k]); d(m[k].seam, target[k].seam, W[k]); }
   d(m.top, target.top, 2); d(m.bottom, target.bottom, 2);
+  e += 0.6 * Math.log(m.vh / target.vh) ** 2;
+  d(m.field, target.field, 8);
   return e;
 }
 
-let p = { amb: 0.275, key: 3.95, kx: 0.015, ky: 0.7, kz: 1.188, fill: 0, spec: 0.16, shin: 36, pillow: 0.35, dome: 0.6, nmap: 0.5 };
-const steps = { amb: 0.1, key: 0.5, kx: 0.15, ky: 0.2, kz: 0.25, fill: 0.15, spec: 0.08, shin: 15, pillow: 0.15, dome: 0.25, nmap: 0.25 };
-const lo = { amb: 0, key: 0.5, kx: -1.5, ky: -0.5, kz: 0.2, fill: 0, spec: 0, shin: 2, pillow: 0, dome: 0, nmap: 0 };
+// lighting values are the settled-mosaic end of the rig in src/lighting.js (URL: mosaic.<k>);
+// pillow / dome / nmap are the brick shading in src/main.js (LOOK)
+let p = { 'mosaic.amb': 0.8, 'mosaic.key': 2.15, 'mosaic.kx': -0.1, 'mosaic.ky': 0.1, 'mosaic.kz': 0.9, 'mosaic.fill': 0.524,
+  'mosaic.spec': 0.08, 'mosaic.shin': 96, pillow: 0.2, dome: 0.225, nmap: 3.5 };
+const steps = { 'mosaic.amb': 0.1, 'mosaic.key': 0.4, 'mosaic.kx': 0.05, 'mosaic.ky': 0.15, 'mosaic.kz': 0.2, 'mosaic.fill': 0.15,
+  'mosaic.spec': 0.04, 'mosaic.shin': 15, pillow: 0.1, dome: 0.1, nmap: 0.5 };
+const lo = { 'mosaic.amb': 0, 'mosaic.key': 0.5, 'mosaic.kx': -0.12, 'mosaic.ky': 0, 'mosaic.kz': 0.6, 'mosaic.fill': 0,
+  'mosaic.spec': 0, 'mosaic.shin': 8, pillow: 0, dome: 0, nmap: 0 };
+const hi = { 'mosaic.kx': 0.12, 'mosaic.ky': 0.35, nmap: 3.5 };
 let best = loss(await measure(p));
 console.log('start loss', best.toFixed(4));
 for (let it = 0; it < iters; it++) {
@@ -89,7 +108,7 @@ for (let it = 0; it < iters; it++) {
     for (const dir of [1, -1]) {
       let improved = true;
       while (improved) {
-        const q = { ...p, [k]: Math.max(lo[k], +(p[k] + dir * steps[k]).toFixed(3)) };
+        const q = { ...p, [k]: Math.min(hi[k] ?? Infinity, Math.max(lo[k], +(p[k] + dir * steps[k]).toFixed(3))) };
         const l = loss(await measure(q));
         improved = l < best - 1e-5;
         if (improved) { best = l; p = q; console.log(`  ${k}=${p[k]}  loss ${best.toFixed(4)}`); }
@@ -101,7 +120,7 @@ for (let it = 0; it < iters; it++) {
 const fin = await measure(p);
 const hex = (c) => '#' + c.map((v) => Math.round(255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055))).map((v) => Math.min(255, v).toString(16).padStart(2, '0')).join('');
 for (const k of 'RWYK') console.log(k, 'mean', hex(fin[k].mean), '/', hex(target[k].mean), ' stud', hex(fin[k].stud), '/', hex(target[k].stud), ' seam', hex(fin[k].seam), '/', hex(target[k].seam));
-console.log('top', hex(fin.top), '/', hex(target.top), ' bottom', hex(fin.bottom), '/', hex(target.bottom));
+console.log('top', hex(fin.top), '/', hex(target.top), ' bottom', hex(fin.bottom), '/', hex(target.bottom), ' V/H', fin.vh.toFixed(2), '/', target.vh.toFixed(2), ' field', hex(fin.field), '/', hex(target.field));
 console.log('best', JSON.stringify(p), 'loss', best.toFixed(4));
 await browser.close();
 server.close();

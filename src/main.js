@@ -1,8 +1,9 @@
 import * as THREE from 'three';
-import { buildChoreography, cameraAt, D_FINAL, FOV, ASPECT, SHIFT_U, SHIFT_V, T } from './choreography.js';
+import { buildChoreography, cameraAt, FOV, ASPECT, SHIFT_U, SHIFT_V, T } from './choreography.js';
 import { loadLogo } from './logo.js';
 import { proceduralBrick, stlBrick, createBricks } from './bricks.js';
 import { createOverlay } from './overlay.js';
+import { createLighting } from './lighting.js';
 import { Soundtrack } from './audio.js';
 
 const params = new URLSearchParams(location.search);
@@ -12,28 +13,29 @@ const DEBUG = params.has('debug');
 if (CAPTURE) for (const id of ['play', 'ui', 'status']) document.getElementById(id).hidden = true;
 
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: CAPTURE, powerPreference: 'high-performance' });
-renderer.setClearColor(0x000000, 1);
-renderer.autoClear = false;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
+let renderer;   // created in init(), so a browser without WebGL gets a readable error
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(FOV, ASPECT, 0.1, 4000);
 
-// Lighting of the original: one strong key from above / slightly left / in front,
-// a weak fill from the camera and low ambient; Phong plastic with a tight specular.
-// (Calibrated against the assembled mosaic; every value can be overridden from the URL.)
-export const LIGHT = { amb: 0.8, key: 2.45, kx: 0.09, ky: 0.5, kz: 0.688, fill: 0.524, spec: 0.08, shin: 96, pillow: 0.2, dome: 0.225, nmap: 3.5 };
-for (const k of Object.keys(LIGHT)) if (params.has(k)) LIGHT[k] = Number(params.get(k));
-scene.add(new THREE.AmbientLight(0xffffff, LIGHT.amb));
-const key = new THREE.PointLight(0xffffff, LIGHT.key, 0, 0);
-key.position.set(LIGHT.kx * D_FINAL, LIGHT.ky * D_FINAL, LIGHT.kz * D_FINAL);
-scene.add(key);
-const fill = new THREE.DirectionalLight(0xffffff, LIGHT.fill);
-fill.position.set(0.1, -0.05, 1);
-scene.add(fill);
+// Brick shading (pillow normals, stud dome, stud-text relief), calibrated against the
+// original's settled mosaic; overridable from the URL for tools/calibrate.mjs.
+const LOOK = { pillow: 0.3, dome: 0.275, nmap: 3 };
+for (const k of Object.keys(LOOK)) if (params.has(k)) LOOK[k] = Number(params.get(k));
+const lighting = createLighting(scene, params);
 
 let bricks, overlay;
+
+function createRenderer() {
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: CAPTURE, powerPreference: 'high-performance' });
+  } catch (e) {
+    throw new Error('WebGL is not available in this browser (enable hardware acceleration)', { cause: e });
+  }
+  renderer.setClearColor(0x000000, 1);
+  renderer.autoClear = false;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+}
 
 function resize() {
   const w = Math.min(innerWidth, (innerHeight * 4) / 3);
@@ -54,6 +56,7 @@ function renderAt(t) {
     camera.position.set(0, 0, cam.z);
     camera.rotation.set(0, 0, -cam.roll);
     bricks.update(t);
+    lighting.update(t, [bricks.materials.body, bricks.materials.cap]);
     renderer.render(scene, camera);
   }
   renderer.clearDepth();
@@ -61,15 +64,19 @@ function renderAt(t) {
 }
 
 async function init() {
+  createRenderer();
   const logo = await loadLogo('./LEGO_logo.svg');
   const choreo = buildChoreography(logo.grid);
-  const geometry = params.get('brick') === 'stl' ? await stlBrick() : proceduralBrick({ seg: 32, pillow: LIGHT.pillow, dome: LIGHT.dome });
-  bricks = createBricks(choreo, geometry, logo.studNormal, LIGHT);
+  const shading = { pillow: LOOK.pillow, dome: LOOK.dome };
+  const geometry = params.get('brick') === 'stl' ? await stlBrick(undefined, shading) : proceduralBrick({ seg: 32, ...shading });
+  bricks = createBricks(choreo, geometry, logo.studNormal, { nmap: LOOK.nmap });
   scene.add(bricks.mesh);
   overlay = await createOverlay(logo.flatTexture);
   resize();
   addEventListener('resize', resize);
-  // compile shaders up front so the first frames don't hitch
+  // compile the shaders and upload the overlay textures up front so the first frames
+  // don't hitch: 13.7 s draws the flat logo and the media mark, 10 s the bricks
+  renderAt(13.7);
   renderAt(10);
   window.__grid = logo.grid;
   window.__renderAt = renderAt;
@@ -85,29 +92,54 @@ function setupPlayer() {
   const soundBtn = document.getElementById('sound');
   const scrub = document.getElementById('scrub');
   const audio = new Soundtrack();
-  let mode = params.get('audio') || 'original';   // original | synth | off
-  let playing = false, clockStart = 0, pausedAt = Number(params.get('t')) || 0, useAudioClock = false;
+  const labels = { original: 'Sound: original', synth: 'Sound: synthesised', off: 'Sound: off' };
+  let mode = params.get('audio');
+  if (!Object.hasOwn(labels, mode)) mode = 'original';
+  const tParam = Number(params.get('t'));
+  let playing = false, clockStart = 0, useAudioClock = false;
+  let pausedAt = Number.isFinite(tParam) ? Math.min(Math.max(tParam, 0), T.end) : 0;
+  let gen = 0, loading = false;       // start() generation (a newer start/cancel drops an older load) and load in flight
+  let rawLast = -1, rawLastMs = 0;    // audio clock watchdog
+  let lastT = NaN, dirty = true;      // the loop redraws only when the time changed or `dirty` is set
+  if (mode === 'original') audio.prefetch();
   if (DEBUG) scrub.hidden = false;
 
-  const labels = { original: 'Sound: original', synth: 'Sound: synthesised', off: 'Sound: off' };
   soundBtn.textContent = labels[mode];
+  play.textContent = '▶ Play';
+  play.disabled = false;
+  ui.hidden = false;
 
   const now = () => (useAudioClock ? audio.time : (performance.now() - clockStart) / 1000);
 
+  // The picture holds at `from` while the soundtrack loads (no rewind on a Sound switch);
+  // Space / R / Replay / Sound during the load supersede it, so only the newest one plays.
   async function start(from = 0) {
+    const my = ++gen;
     play.hidden = true;
+    play.textContent = '▶ Play';
     ui.classList.add('playing');
-    useAudioClock = false;
+    status.textContent = '';
+    audio.stop();
+    playing = false; pausedAt = from; useAudioClock = false;
+    loading = false;   // a superseded load (e.g. Sound switched to off mid-load) must not stay pending
     if (mode !== 'off') {
+      const m = mode;
+      loading = true;
       try {
         await audio.ensureContext();
-        status.textContent = mode === 'original' ? 'loading soundtrack…' : 'synthesising soundtrack…';
-        const buf = await audio.load(mode);
+        if (my !== gen) return;
+        status.textContent = m === 'original' ? 'loading soundtrack…' : 'synthesising soundtrack…';
+        const buf = await audio.load(m);
+        if (my !== gen) return;   // superseded during the load: drop this buffer
         audio.play(buf, from);
         useAudioClock = true;
+        rawLast = audio.rawTime; rawLastMs = performance.now();
       } catch (e) {
+        if (my !== gen) return;
         console.warn('audio unavailable, playing silently', e);
-        if (mode === 'original') { mode = 'synth'; soundBtn.textContent = labels[mode]; return start(from); }
+        if (m === 'original') { mode = 'synth'; soundBtn.textContent = labels.synth; return start(from); }
+      } finally {
+        if (my === gen) loading = false;
       }
       status.textContent = '';
     }
@@ -115,31 +147,80 @@ function setupPlayer() {
     playing = true;
   }
 
-  function stop() {
-    pausedAt = now();
-    playing = false;
-    audio.stop();
+  function cancelStart() {
+    gen++;
+    loading = false;
+    status.textContent = '';
+    dirty = true;   // with ?debug, put the time readout back even though the time is unchanged
+    ui.classList.remove('playing');
+    play.hidden = false;
   }
 
-  play.addEventListener('click', () => start(pausedAt >= T.end ? 0 : pausedAt));
-  document.getElementById('replay').addEventListener('click', () => { audio.stop(); start(0); });
+  function stop() {
+    pausedAt = Math.max(0, now());
+    playing = false;
+    audio.stop();
+    ui.classList.remove('playing');
+    play.hidden = false;
+  }
+
+  const toggle = () => {
+    if (playing) stop();
+    else if (loading) cancelStart();
+    else start(pausedAt >= T.end ? 0 : pausedAt);
+  };
+
+  play.addEventListener('click', toggle);
+  document.getElementById('stage').addEventListener('click', toggle);
+  document.getElementById('replay').addEventListener('click', () => start(0));
   soundBtn.addEventListener('click', () => {
     mode = { original: 'synth', synth: 'off', off: 'original' }[mode];
     soundBtn.textContent = labels[mode];
-    if (playing) { const t = now(); audio.stop(); start(t); }
+    if (playing || loading) start(playing ? Math.max(0, now()) : pausedAt);
   });
-  scrub.addEventListener('input', () => { if (playing) stop(); pausedAt = Number(scrub.value); play.hidden = false; });
+  scrub.addEventListener('input', () => {
+    if (playing) stop();
+    else if (loading) cancelStart();
+    pausedAt = Number(scrub.value);
+    play.hidden = false;
+  });
   addEventListener('keydown', (e) => {
-    if (e.code === 'Space') { e.preventDefault(); playing ? (stop(), play.hidden = false) : start(pausedAt >= T.end ? 0 : pausedAt); }
-    if (e.code === 'KeyR') { audio.stop(); start(0); }
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.code === 'Space') e.preventDefault();   // also on repeats: never activate a focused button
+    if (e.repeat) return;
+    if (e.code === 'Space') toggle();
+    if (e.code === 'KeyR') start(0);
     if (e.code === 'KeyM') soundBtn.click();
   });
 
+  // Redraw only when the time changed, or when a resize / restored context cleared the canvas.
+  addEventListener('resize', () => { dirty = true; });
+  canvas.addEventListener('webglcontextrestored', () => { dirty = true; });
+
   const loop = () => {
     requestAnimationFrame(loop);
+    if (playing && useAudioClock) {
+      // watchdog: when the audio clock stalls (device lost, output hung), carry on
+      // silently on the performance clock from the current frame
+      const raw = audio.rawTime, ms = performance.now();
+      if (raw !== rawLast) { rawLast = raw; rawLastMs = ms; }
+      else if (ms - rawLastMs > 300) {
+        const tf = Math.max(0, audio.time);
+        audio.stop();   // otherwise the sound would resume later, out of sync
+        useAudioClock = false;
+        clockStart = ms - tf * 1000;
+        status.textContent = 'audio unavailable – playing silently';
+      }
+    }
     let t = playing ? now() : pausedAt;
-    if (playing && t >= T.end) { t = T.end; playing = false; pausedAt = T.end; ui.classList.remove('playing'); play.hidden = false; play.textContent = '↻ Play again'; }
-    if (DEBUG) { scrub.value = t; status.textContent = `${t.toFixed(2)} s · frame ${Math.floor(t * 15) + 1}`; }
+    if (playing && t >= T.end) { t = T.end; playing = false; pausedAt = T.end; ui.classList.remove('playing'); }
+    if (!dirty && t === lastT) return;
+    lastT = t; dirty = false;
+    if (DEBUG && !loading) {
+      const td = Math.max(0, t);
+      scrub.value = td;
+      status.textContent = `${td.toFixed(2)} s · frame ${Math.floor(td * 15) + 1}`;
+    }
     renderAt(t);
   };
   loop();
@@ -147,5 +228,7 @@ function setupPlayer() {
 
 init().catch((e) => {
   console.error(e);
-  document.getElementById('status').textContent = `Failed to start: ${e.message}. Serve this folder over http (npm start).`;
+  const msg = String(e?.message ?? e).replace(/\.$/, '');
+  const hint = e instanceof TypeError && /fetch/i.test(msg) ? ' Serve this folder over http (npm start).' : '';
+  window.__fail(`Failed to start: ${msg}.${hint}`);
 });

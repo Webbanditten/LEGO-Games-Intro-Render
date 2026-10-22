@@ -11,23 +11,52 @@ const GRID_DY = 0.3;                         // sampling shift that best matches
 // The flat logo in the video is a deeper crimson / golden yellow than the SVG.
 const FLAT_RED = '#D70129';
 const FLAT_YELLOW = '#FBC832';
+// Red stroke (viewBox units) round the red shape, clipped to the inner square: thins the
+// yellow ring by 1.6 u (~2.9 px at the hold) to the video's ~6 px.
+const FLAT_RING_STROKE = 3.2;
+// The video's (R) is a bold dark-red mark, not the SVG's thin black outline. With a 0.8 u
+// stroke (bolder runs the ring and the R together) this colour gives about the original's
+// ink at the hold and ~85 % of it at the end card, where the video blurs it out further.
+const FLAT_R_MARK = '#3A0008';
 
 export async function loadLogo(url = './LEGO_logo.svg') {
-  const svg = await (await fetch(url)).text();
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
+  const svg = await res.text();
   const [mosaicImg, flatImg] = await Promise.all([
     svgImage(svg, 1800),
-    svgImage(svg.replace(/#E3000B/gi, FLAT_RED).replace(/#FFED00/gi, FLAT_YELLOW), 2048),
+    svgImage(flatLogoSvg(svg), 2048),
   ]);
   const { grid, letterMask } = sampleMosaic(mosaicImg, 1800);
   return { svg, grid, flatTexture: canvasTexture(flatImg, 2048), studNormal: studNormalMap(letterMask) };
 }
 
+// The flat logo as the video shows it (the mosaic samples the untouched SVG). The stroke
+// is added before the colour swap so it is recoloured too; the (R) leads the black path
+// (4 subpaths) and moves into its own path, the letters' outline then starts absolute.
+function flatLogoSvg(svg) {
+  return svg
+    .replace('fill="#E3000B"', `fill="#E3000B" stroke="#E3000B" stroke-width="${FLAT_RING_STROKE}" stroke-linejoin="round" clip-path="url(#inner)"`)
+    .replace(/(<svg[^>]*>)/, '$1<defs><clipPath id="inner"><rect x="1.223" y="1.204" width="177.596" height="177.596"/></clipPath></defs>')
+    .replace(/<path ([^>]*?)d="(M167\.615 54\.301(?:[^Z]*Z){4})m-42\.77 10\.664/,
+      `<path $1fill="${FLAT_R_MARK}" stroke="${FLAT_R_MARK}" stroke-width="0.8" d="$2"/><path $1d="M128.366 63.45`)
+    .replace(/#E3000B/gi, FLAT_RED)
+    .replace(/#FFED00/gi, FLAT_YELLOW);
+}
+
+// Rasterises SVG text at width x height (any width/height on its root tag is replaced).
 export function svgImage(svgText, width, height = width) {
-  const sized = svgText.replace('<svg ', `<svg width="${width}" height="${height}" `);
+  const sized = svgText
+    .replace(/<svg\b[^>]*>/, (tag) => tag.replace(/\s(width|height)="[^"]*"/g, ''))
+    .replace('<svg ', `<svg width="${width}" height="${height}" `);
   const img = new Image();
   img.decoding = 'sync';
-  const done = new Promise((res, rej) => { img.onload = () => res(img); img.onerror = rej; });
-  img.src = URL.createObjectURL(new Blob([sized], { type: 'image/svg+xml' }));
+  const url = URL.createObjectURL(new Blob([sized], { type: 'image/svg+xml' }));
+  const done = new Promise((res, rej) => {
+    img.onload = () => { URL.revokeObjectURL(url); res(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error(`SVG decode failed (${width}x${height})`)); };
+  });
+  img.src = url;
   return done;
 }
 
@@ -131,16 +160,33 @@ function studNormalMap(mask, size = 256) {
   hctx.fillStyle = '#000';
   hctx.fillRect(0, 0, size, size);
   const w = size * 0.76, hh = (w * src.height) / src.width;
-  hctx.filter = 'blur(1.2px)';
   hctx.drawImage(src, (size - w) / 2, (size - hh) / 2, w, hh);
   const hd = hctx.getImageData(0, 0, size, size).data;
+
+  // soften the edges: separable Gaussian, sigma 1.2 px (ctx.filter is ignored by Safari);
+  // pixels outside the canvas count as 0, which is right since the border is black
+  const sigma = 1.2, R = 4, k = [];
+  for (let i = -R; i <= R; i++) k.push(Math.exp(-(i * i) / (2 * sigma * sigma)));
+  const ks = k.reduce((a, b) => a + b);
+  for (let i = 0; i < k.length; i++) k[i] /= ks;
+  const tmp = new Float32Array(size * size), hf = new Float32Array(size * size);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    let a = 0;
+    for (let i = -R; i <= R; i++) { const xx = x + i; if (xx >= 0 && xx < size) a += k[i + R] * hd[(y * size + xx) * 4]; }
+    tmp[y * size + x] = a;
+  }
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    let a = 0;
+    for (let i = -R; i <= R; i++) { const yy = y + i; if (yy >= 0 && yy < size) a += k[i + R] * tmp[yy * size + x]; }
+    hf[y * size + x] = a;
+  }
 
   // Sobel -> tangent-space normals (+Y up, three.js / OpenGL convention)
   const out = document.createElement('canvas');
   out.width = out.height = size;
   const octx = out.getContext('2d');
   const nd = octx.createImageData(size, size);
-  const H = (x, y) => hd[((Math.min(size - 1, Math.max(0, y)) * size) + Math.min(size - 1, Math.max(0, x))) * 4] / 255;
+  const H = (x, y) => hf[Math.min(size - 1, Math.max(0, y)) * size + Math.min(size - 1, Math.max(0, x))] / 255;
   const strength = 3.0;
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     const dx = (H(x + 1, y - 1) + 2 * H(x + 1, y) + H(x + 1, y + 1)) - (H(x - 1, y - 1) + 2 * H(x - 1, y) + H(x - 1, y + 1));
