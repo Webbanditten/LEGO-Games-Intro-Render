@@ -229,6 +229,6 @@ function setupPlayer() {
 init().catch((e) => {
   console.error(e);
   const msg = String(e?.message ?? e).replace(/\.$/, '');
-  const hint = e instanceof TypeError && /fetch/i.test(msg) ? ' Serve this folder over http (npm start).' : '';
+  const hint = e instanceof TypeError && /fetch/i.test(msg) ? ' Check your connection and reload (running locally? use npm start).' : '';
   window.__fail(`Failed to start: ${msg}.${hint}`);
 });

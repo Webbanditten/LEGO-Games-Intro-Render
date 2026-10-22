@@ -19,7 +19,8 @@
     #ui { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 8px; align-items: center;
       justify-content: center; padding: 12px; transition: opacity .4s; }
     #ui.playing { opacity: 0; }
-    #ui:hover { opacity: 1; }
+    /* mouse only: on touch screens :hover sticks after a tap and would pin the bar over the picture */
+    @media (hover: hover) { #ui:hover { opacity: 1; } }
     /* touch: the faded-out bar must not catch taps, so a tap reaches the stage and pauses */
     @media (hover: none) { #ui.playing { pointer-events: none; } }
     #ui button { background: #222; color: #ddd; border: 1px solid #444; border-radius: 4px; padding: 6px 10px; cursor: pointer; font: inherit; }
@@ -53,7 +54,7 @@
     addEventListener('error', function (e) {
       if (window.__ready || location.protocol === 'file:') return;
       var src = e.target && e.target.src;
-      __fail(src ? 'Failed to load ' + src.split('/').pop() + '. Serve this folder over http (npm start).' : 'Failed to start: ' + e.message);
+      __fail(src ? 'Failed to load ' + src.split('/').pop() + '. Check your connection and reload (running locally? use npm start).' : 'Failed to start: ' + e.message);
     }, true);   // the capture phase also sees <script> load errors
   </script>
   <script type="module" src="./src/main.js"></script>
