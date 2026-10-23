@@ -11,7 +11,8 @@ const grid = fs.readFileSync(path.join(root, 'assets/mosaic-60.txt'), 'utf8').tr
 const ch = buildChoreography(grid);
 const pos = new Float32Array(3), quat = new Float32Array(4), sc = [0, 0, 0];
 
-// measured targets from the original (visible bricks, median size in H)
+// measured targets from the original (visible bricks, median size in H). They count lit blobs in its frames, so they miss
+// bricks hidden behind others; vis counts every brick in view, so from ~2.5 s it is expected to read well above them.
 const TARGET = { 0.33: 1, 0.8: 3, 1.2: 8, 1.6: 17, 2.0: 30, 2.6: 55, 3.0: 78, 3.4: 110, 3.8: 170, 4.2: 260, 4.6: 330, 4.9: 400 };
 
 const firstSeen = new Float32Array(ch.n).fill(-1);

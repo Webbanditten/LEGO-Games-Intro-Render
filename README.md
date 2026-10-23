@@ -60,10 +60,11 @@ Everything was measured from `intro.mp4` first, then matched:
   - The Media mark grows from 13.56 s with a 1.8 % overshoot.
 - **One deliberate deviation.** The original drops the last few degrees of brick misalignment in a single 15 fps frame. At 60 fps that reads as a jolt, so here the bricks ease into place over the final 0.4 s.
 - **The swarm:**
-  - Visible brick counts track the original through the opening.
-  - So do the colour shares, red/white/yellow area per frame, entry edges and fall speeds.
-  - So does how settled the logo looks between 9.3 and 11 s.
-  - The fall speed was matched with optical flow, frame third by frame third. The bricks rain through the full height of the frame and out at the bottom. They only turn back toward the logo once the camera pulls back.
+  - Each falling brick is aimed at a vanishing point below the frame, so the swarm fans out like the original: the left side streams down and to the right, the right side down and to the left.
+  - The bricks rain through the full height of the frame and out at the bottom. They only turn back toward the logo once the camera pulls back. The fall speed was matched with optical flow, frame third by frame third.
+  - From 2 to 5 s, a few hundred bricks that join the logo late make an extra early pass: they fall through the frame at about the logo's distance, then switch to their own path while out of view. Counted by size in the rendered frames, the number of small bricks in view at 3 to 5 s is within a few percent of the original's.
+  - The colour shares, red/white/yellow area per frame and entry edges follow the original, and so does how settled the logo looks between 9.3 and 11 s.
+  - Known gap: from about 5 to 7 s the original shows more small bricks, roughly 1.5 to 1.7 times as many, and fewer mid-size red ones.
   - The fly-bys and the late bursts of grey, white and red bricks follow the original frame by frame, including which face they show: several turn the LEGO stud toward the camera. The last three white bricks glide into the letters along tracks measured from the video.
   - `node tools/stats.mjs`, `tools/area_stats.py` and `tools/settle_curve.py` print the comparisons.
 - **The mosaic:**
