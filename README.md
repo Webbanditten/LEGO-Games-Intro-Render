@@ -1,6 +1,6 @@
 # LEGO Media intro, recreated in three.js
 
-**[▶ Watch it live in your browser](https://webbanditten.github.io/LEGO-Games-Intro-Render/)** · rendered videos: [1080p60](https://github.com/Webbanditten/LEGO-Games-Intro-Render/releases/download/v2.0/lego-intro-1080p.mp4) · [4K60](https://github.com/Webbanditten/LEGO-Games-Intro-Render/releases/download/v2.0/lego-intro-4k.mp4)
+**[▶ Watch it live in your browser](https://webbanditten.github.io/LEGO-Games-Intro-Render/)** · rendered videos: [1080p60](https://github.com/Webbanditten/LEGO-Games-Intro-Render/releases/download/v2.1/lego-intro-1080p.mp4) · [4K60](https://github.com/Webbanditten/LEGO-Games-Intro-Render/releases/download/v2.1/lego-intro-4k.mp4)
 
 [![The recreated intro, rendered in real time](docs/preview.webp)](https://webbanditten.github.io/LEGO-Games-Intro-Render/)
 
